@@ -18,13 +18,26 @@ const HASH_BUFLEN: usize = 65536;
     about = "Find duplicate files in a directory structure"
 )]
 struct Options {
-    #[arg(short, long, default_value_t = 0)]
+    #[arg(
+        short,
+        long,
+        default_value_t = 0,
+        help = "Minimum size (in bytes) of files to search"
+    )]
     min_size: u64,
 
-    #[arg(short, long)]
+    #[arg(
+        short,
+        long,
+        help = "Print file names and sizes of the found duplicates"
+    )]
     verbose: bool,
 
-    #[arg(long)]
+    #[arg(
+        long,
+        short = 'd',
+        help = "Do not search files beyond this depth. Files in the specified paths are considered depth 1."
+    )]
     max_depth: Option<usize>,
 
     #[arg(
@@ -38,7 +51,7 @@ struct Options {
     #[arg(long, group = "mode", help = "Remove duplicate files")]
     remove: bool,
 
-    #[arg(required = true)]
+    #[arg(required = true, help = "Directories to search")]
     paths: Vec<PathBuf>,
 }
 
