@@ -1,0 +1,15 @@
+[package]
+name = "dedup"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+anyhow = { version = "1.0", default_features = false, features = ["std"] }
+sha2 = "0.10.6"
+generic-array = "0.14"
+walkdir = "2"
+number_prefix = "0.4.0"
+multimap = { git = "https://github.com/abspoel/multimap_smallvec", branch = "smallvec" }
