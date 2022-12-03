@@ -200,6 +200,50 @@ fn format_bytes(num: u64) -> String {
     }
 }
 
+fn handle_entry(
+    entry: &DirEntry,
+    options: &Options,
+    index: &mut Index,
+    stats: &mut Stats,
+) -> anyhow::Result<()> {
+    let size = entry.metadata()?.len();
+    if entry.file_type().is_file() && size > options.min_size {
+        if let Some(prev_path) = check_index(entry, index)? {
+            if prev_path != entry.path() {
+                let rel = relative_path(entry.path(), &prev_path)?;
+                if options.remove || options.replace_by_symlink {
+                    fs::remove_file(entry.path())?;
+                    if options.replace_by_symlink {
+                        std::os::unix::fs::symlink(&rel, entry.path())?;
+                    }
+                }
+                if options.verbose {
+                    if options.remove {
+                        println!("({}) remove {:?}", format_bytes(size), entry.path());
+                    } else {
+                        println!(
+                            "({}) link {:?} -> {:?}",
+                            format_bytes(size),
+                            entry.path(),
+                            rel
+                        );
+                    }
+                }
+                stats.saved_bytes += size;
+                stats.num_actions += 1;
+            }
+        }
+        stats.num_files += 1;
+    }
+    Ok(())
+}
+
+struct Stats {
+    num_files: u64,
+    num_actions: u64,
+    saved_bytes: u64,
+}
+
 fn main() -> anyhow::Result<()> {
     let options = Options::parse();
 
@@ -208,63 +252,39 @@ fn main() -> anyhow::Result<()> {
         full_hashes: HashMap::new(),
     };
 
-    let mut num_files = 0;
-    let mut num_actions = 0;
-    let mut saved_bytes = 0;
+    let mut stats = Stats {
+        num_files: 0,
+        num_actions: 0,
+        saved_bytes: 0,
+    };
 
-    for dir in options.paths {
+    for dir in &options.paths {
         let mut walk = WalkDir::new(dir);
         if let Some(max_depth) = options.max_depth {
             walk = walk.max_depth(max_depth);
         }
         for _entry in walk {
-            let entry = &_entry?;
-            let size = entry.metadata()?.len();
-            if entry.file_type().is_file() && size > options.min_size {
-                if let Some(prev_path) = check_index(entry, &mut index)? {
-                    if prev_path != entry.path() {
-                        let rel = relative_path(entry.path(), &prev_path)?;
-                        if options.remove || options.replace_by_symlink {
-                            fs::remove_file(entry.path())?;
-                            if options.replace_by_symlink {
-                                std::os::unix::fs::symlink(&rel, entry.path())?;
-                            }
-                        }
-                        if options.verbose {
-                            if options.remove {
-                                println!("({}) remove {:?}", format_bytes(size), entry.path());
-                            } else {
-                                println!(
-                                    "({}) link {:?} -> {:?}",
-                                    format_bytes(size),
-                                    entry.path(),
-                                    rel
-                                );
-                            }
-                        }
-                        saved_bytes += size;
-                        num_actions += 1;
-                    }
-                }
-                num_files += 1;
+            match &_entry {
+                Ok(entry) => handle_entry(entry, &options, &mut index, &mut stats)?,
+                Err(err) => eprintln!("{}", err),
             }
         }
     }
 
-    print!("Processed {} files. ", num_files);
+    print!("Processed {} files. ", stats.num_files);
     if options.remove || options.replace_by_symlink {
         if options.remove {
-            print!("Removed {} files", num_actions);
+            print!("Removed {} files", stats.num_actions);
         } else {
             /* if options.replace_by_symlink  */
-            print!("Created {} symlinks", num_actions);
+            print!("Created {} symlinks", stats.num_actions);
         }
-        println!(", saving {}.", format_bytes(saved_bytes));
+        println!(", saving {}.", format_bytes(stats.saved_bytes));
     } else {
         println!(
             "Found {} duplicates. Removing them would save {}.",
-            num_actions,
-            format_bytes(saved_bytes)
+            stats.num_actions,
+            format_bytes(stats.saved_bytes)
         );
     }
     anyhow::Ok(())
